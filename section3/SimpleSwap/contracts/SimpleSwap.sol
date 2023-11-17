@@ -10,7 +10,6 @@ import "forge-std/console.sol";
 contract SimpleSwap is ISimpleSwap, ERC20 {
 
     // Implement core logic here
-     // Implement core logic here
     address public tokenA_;
     address public tokenB_;
     uint256 public reserveA_;
@@ -24,8 +23,14 @@ contract SimpleSwap is ISimpleSwap, ERC20 {
         require(isContract(_tokenA),"SimpleSwap: TOKENA_IS_NOT_CONTRACT");
         require(isContract(_tokenB),"SimpleSwap: TOKENB_IS_NOT_CONTRACT");
         require(_tokenA!=_tokenB,"SimpleSwap: TOKENA_TOKENB_IDENTICAL_ADDRESS");
-        tokenA_ = _tokenA;
-        tokenB_ = _tokenB;
+        if(uint256(uint160(_tokenA))< uint256(uint160(_tokenB))){
+            tokenA_ = _tokenA;
+            tokenB_ = _tokenB;
+        }
+        else{
+            tokenA_ = _tokenB;
+            tokenB_ = _tokenA;
+        }
     }
 
     /// @notice Swap tokenIn for tokenOut with amountIn
@@ -35,8 +40,28 @@ contract SimpleSwap is ISimpleSwap, ERC20 {
     /// @return amountOut The amount of tokenOut received
     function swap(address tokenIn, address tokenOut, uint256 amountIn) 
         external virtual override returns (uint256 amountOut) {
+        require(tokenIn==tokenA_ || tokenIn==tokenB_ , "SimpleSwap: INVALID_TOKEN_IN");
+        require(tokenOut==tokenA_ || tokenOut==tokenB_ , "SimpleSwap: INVALID_TOKEN_OUT");
+        require(tokenIn!=tokenOut , "SimpleSwap: IDENTICAL_ADDRESS");
+        uint256 reserveIn = tokenIn == tokenA_ ? reserveA_ : reserveB_;
+        uint256 reserveOut = tokenOut == tokenA_ ? reserveA_ : reserveB_;
         
+        amountOut = amountIn * reserveOut / (reserveIn + amountIn);
+        
+        IERC20(tokenIn).transferFrom(msg.sender, address(this), amountIn);
+        require(amountIn > 0 || amountOut > 0, 'SimpleSwap: INSUFFICIENT_INPUT_AMOUNT');
+        require(amountOut < reserveOut, 'SimpleSwap: INSUFFICIENT_LIQUIDITY');
+        IERC20(tokenOut).transfer(msg.sender, amountOut);
+
+        uint256 balanceA = IERC20(tokenA_).balanceOf(address(this));
+        uint256 balanceB = IERC20(tokenB_).balanceOf(address(this));
+     
+        require(balanceA * balanceB >= reserveA_ * reserveB_, 'UniswapV2: K');
+        
+        _update(balanceA, balanceB);
+        emit Swap(msg.sender, tokenIn, tokenOut, amountIn, amountOut);
     }
+
 
     /// @notice Add liquidity to the pool
     /// @param amountAIn The amount of tokenA to add
@@ -49,13 +74,15 @@ contract SimpleSwap is ISimpleSwap, ERC20 {
         uint256 amountBIn
     ) external virtual override returns (uint256 amountA, uint256 amountB, uint256 liquidity)
     {
+        require(amountAIn>0 && amountBIn>0 , "SimpleSwap: INSUFFICIENT_INPUT_AMOUNT");
         (amountA, amountB) = _addLiquidity(amountAIn, amountBIn);
         IERC20(tokenA_).transferFrom(msg.sender, address(this), amountA);
         IERC20(tokenB_).transferFrom(msg.sender, address(this), amountB);
         liquidity = mint(msg.sender);
+        emit AddLiquidity(msg.sender, amountA, amountB, liquidity);
     }
 
- /// @notice Remove liquidity from the pool
+    /// @notice Remove liquidity from the pool
     /// @param liquidity The amount of liquidity to remove
     /// @return amountA The amount of tokenA received
     /// @return amountB The amount of tokenB received
@@ -144,7 +171,7 @@ contract SimpleSwap is ISimpleSwap, ERC20 {
         uint256 _totalSupply = totalSupply(); // gas savings, must be defined here since totalSupply can update in _mintFee
         amountA = liquidity * balanceA / _totalSupply; // using balances ensures pro-rata distribution
         amountB = liquidity * balanceB / _totalSupply; // using balances ensures pro-rata distribution
-        require(amountA > 0 && amountB > 0, 'UniswapV2: INSUFFICIENT_LIQUIDITY_BURNED');
+        require(amountA > 0 && amountB > 0, 'SimpleSwap: INSUFFICIENT_LIQUIDITY_BURNED');
         _burn(address(this), liquidity);
         IERC20(tokenA_).transfer(to, amountA);
         IERC20(tokenB_).transfer(to, amountB);
