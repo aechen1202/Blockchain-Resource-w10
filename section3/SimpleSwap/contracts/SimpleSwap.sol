@@ -84,7 +84,6 @@ contract SimpleSwap is ISimpleSwap, ERC20 {
     /// @return amountA The amount of tokenA received
     /// @return amountB The amount of tokenB received
     function removeLiquidity(uint256 liquidity) external virtual override returns (uint256 amountA, uint256 amountB){
-        console.log(allowance(msg.sender,address(this)));
         _transfer(msg.sender,address(this),liquidity);
         (amountA, amountB) = burn(msg.sender,liquidity);
     }
