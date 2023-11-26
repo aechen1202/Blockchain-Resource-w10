@@ -179,9 +179,7 @@ contract SimpleSwap is ISimpleSwap, ERC20 {
     }
 
     function isContract(address addr) internal view returns (bool) {
-        uint size;
-        assembly { size := extcodesize(addr) }
-        return size > 0;
+        return addr.code.length > 0;
     }
 
 }
